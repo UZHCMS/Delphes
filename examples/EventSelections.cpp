@@ -30,13 +30,13 @@ using namespace std;
 //------------------------------------------------------------------------------
 
 // Analysis macro
-#include "Analysis.C"
+#include "EventSelections.C"
 
 //------------------------------------------------------------------------------
 
 int main(int argc, char *argv[])
 {
-  char *appName = "Analysis";
+  char *appName = "EventSelections";
 
   if(argc != 3)
   {
@@ -57,9 +57,9 @@ int main(int argc, char *argv[])
 
 //------------------------------------------------------------------------------
 
-// Call the macros main function (in Analysis.C)
+// Call the macros main function (in EventSelections.C)
 
-  Analysis(inputFile,outputFile);
+  EventSelections(inputFile,outputFile);
 
 //------------------------------------------------------------------------------
 

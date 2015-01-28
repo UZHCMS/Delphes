@@ -61,6 +61,15 @@ double DeltaR(TVector3 candidate1, TVector3 candidate2)
   Double_t dphi = candidate1.Phi()-candidate2.Phi();
   return sqrt( deta*deta+dphi*dphi );
 }
+
+//-----------------------------------------------------------------------------
+//Compute dR with TLorentzVector
+double LorenzDeltaR(TLorentzVector candidate1, TLorentzVector candidate2)
+{
+  Double_t deta = candidate1.Eta()-candidate2.Eta();
+  Double_t dphi = candidate1.Phi()-candidate2.Phi();
+  return sqrt( deta*deta+dphi*dphi );
+}
 //------------------------------------------------------------------------------
 
 //Function to compute the impact parameter
@@ -348,15 +357,21 @@ void AnalyseEvents(ExRootTreeReader *treeReader, MyPlots *plots)
   TLorentzVector vLJet2;
   TVector3 vTrack;
 
-  TVector3 vElectron;
+  TLorentzVector vElectron;
   TLorentzVector vElectron1;
   TLorentzVector vElectron2;
 
-  TVector3 vPhoton;
-  TVector3 vMuon;
+  TLorentzVector vPhoton;
+  TLorentzVector vMuon;
   TLorentzVector vMuon1;
   TLorentzVector vMuon2;
 
+  //Composite objects
+  TLorentzVector vdiLeptonZ;
+  TLorentzVector vdiJetZ;
+  TLorentzVector vbb;
+  TLorentzVector vZZ;
+  TLorentzVector vbbZZ;
 
   //Cuts
   Double_t pTMin  = 20;
@@ -369,9 +384,13 @@ void AnalyseEvents(ExRootTreeReader *treeReader, MyPlots *plots)
   Double_t PartonPTMin = 1.0;
   Double_t PartonEtaMax  = 4.0;   
   
- 
-  Int_t i, j, k, je, jm, jg, jme, pdgCode, pdgCodeMax, trackpT, trackpTMax; 
-  Bool_t Epass, Gpass;
+  Double_t dRbb = 0;
+  Int_t nbb=0;
+  Int_t nbbjj=0;
+  Int_t nbbjjll=0;
+
+  Int_t i, j, k, je, jm, jg, pdgCode, pdgCodeMax, trackpT, trackpTMax; 
+  Bool_t Epass, Gpass, dilep;
   
   Double_t dxy; //Impact Parameter
   
@@ -391,29 +410,26 @@ void AnalyseEvents(ExRootTreeReader *treeReader, MyPlots *plots)
     ljet1 = 0;
     ljet2 = 0;
     
-
     ele = 0;
     ele1 = 0;
     ele2 = 0;
-
+    
     pho = 0;
     mu = 0;
     mu1 = 0;
     mu2 = 0;
-
+    
     MET = 0;
     track = 0;
     LeadingTrack = 0;
+    dRbb = 0;
     // Load selected branches with data from specified event
     treeReader->ReadEntry(entry);
-    std::cout<< branchElectron->GetEntriesFast()<<std::endl;
-    std::cout<< branchMuon->GetEntriesFast()<<std::endl;
-    std::cout<< branchPhoton->GetEntriesFast()<<std::endl;
     // Loop over Electrons
-    std::cout<<"loop electrons"<<std::endl;
     for(je = 0; je < branchElectron->GetEntriesFast(); ++je) {
       ele = (Electron*)branchElectron->At(je);
-
+      
+      // Electron object ID
       if(!(ele->PT>10)) continue;
       if(!(TMath::Abs(ele->Eta) < 2.5)) continue;
       if(TMath::Abs(ele->Eta) > 1.44 && TMath::Abs(ele->Eta)< 1.56) continue;      
@@ -437,27 +453,28 @@ void AnalyseEvents(ExRootTreeReader *treeReader, MyPlots *plots)
       // plots->hEleEta->Fill(ele->Eta);
       // plots->hElePt->Fill(ele->PT);
 
-      // Store leading pT electron as ele1 and next leading as ele2
-    	if (!ele1 && ele->PT > pTMin_ele){
-    	  ele1=ele;
-    	} else if (ele->PT > ele1->PT){
-    	  ele2 = ele1;
-    	  ele1 = ele;
-    	} else if (!ele2){
-    	  ele2 = ele;
-    	} else if (ele->PT > ele2->PT){
-    	  ele2 = ele;
-    	}
 
+      // Store leading pT electron as ele1 and next leading as ele2
+      if (!ele1){
+	if (ele->PT < 20) continue;
+	ele1=ele;
+      } else if (ele->PT > ele1->PT){
+	ele2 = ele1;
+	ele1 = ele;
+      } else if (!ele2){
+	ele2 = ele;
+      } else if (ele->PT > ele2->PT){
+	ele2 = ele;
+      } else{
+	// don't care about 3rd electron
+      }
     }
-    
     // Loop over Photons
     for(jg = 0; jg < branchPhoton->GetEntriesFast(); ++jg){
       pho = (Photon*)branchPhoton->At(jg);
-      std::cout<<"in photon loop"<<std::endl;
       if(!(pho->PT>20)) continue;
       
-      // Constrain photons to barrel and end caps
+      // Photon Object ID
       if(!(TMath::Abs(pho->Eta)) < 2.5) continue;
       if(TMath::Abs(pho->Eta) > 1.44 && TMath::Abs(pho->Eta)< 1.56) continue;
       
@@ -475,279 +492,288 @@ void AnalyseEvents(ExRootTreeReader *treeReader, MyPlots *plots)
   	     )) Gpass = kFALSE;
       }
       if(!(Gpass)) continue;
-
+      
       // plots->hPhoEta->Fill(pho->Eta);
       // plots->hPhoPt->Fill(pho->PT);
     }
-    std::cout<<"finished photons"<<std::endl;
-    
-    std::cout<<"looping muons"<<std::endl;
+
     // Loop over Muons
     for(jm = 0; jm < branchMuon->GetEntriesFast(); ++jm){
       
       mu = (Muon*)branchMuon->At(jm);
-	 
-  	 if(!(mu->PT > 10)) continue;
-  	 if(!(TMath::Abs(mu->Eta) <2.4)) continue;
-	 
-  	 if(mu->IsolationVar > 0.15) continue;
-  	 //if(TMath::Abs(mu->dz) >0.5) continue;
-  	 //if(mu->nPixHits < 1) continue;
-  	 //if(mu->nTkHis < 11) continue;
-  	 //if(TMath::Abs(dxy) < 2 mm) continue;
-	 
-	 std::cout<<"1 muons"<<std::endl;
-  	 // Store leading pT muon as mu1 and next leading as mu2
-    // for HH->bbZZ
       
-    if((!mu1) /*&& (mu->PT > 20)*/){ //FIXME
-      std::cout<<"1.5 muons"<<std::endl;
-      mu1 = mu;
-    } else if (mu->PT > mu1->PT){
-      std::cout<<"1.6 muons"<<std::endl;
-      mu2=mu1;
-      mu1=mu;
-    } else if (!mu2){
-      std::cout<<"1.7 muons"<<std::endl;
-      mu2=mu;
-    } else if (mu->PT > mu2->PT){
-      std::cout<<"1.8 muons"<<std::endl;
-      mu2=mu;
+      // Muon Object ID
+      if(!(mu->PT > 10)) continue;
+      if(!(TMath::Abs(mu->Eta) <2.4)) continue;
+      
+      if(mu->IsolationVar > 0.15) continue;
+      //if(TMath::Abs(mu->dz) >0.5) continue;
+      //if(mu->nPixHits < 1) continue;
+      //if(mu->nTkHis < 11) continue;
+      //if(TMath::Abs(dxy) < 2 mm) continue;
+      
+      // Store mu1 as leading muon and mu2 as subleading
+      if(!mu1){
+	if (mu->PT < 20) continue;
+	mu1 = mu;
+      } else if (mu->PT > mu1->PT){
+	mu2=mu1;
+	mu1=mu;
+      } else if (!mu2){
+	mu2=mu;
+      } else if (mu->PT > mu2->PT){
+	mu2=mu;
+      }
+      else{
+      }
+      // plots->hMuonEta->Fill(mu->Eta);
+      // plots->hMuonPt->Fill(mu->PT);
     }
-     std::cout<<"2 muons"<<std::endl;
-	 
-     // plots->hMuonEta->Fill(mu->Eta);
-     // plots->hMuonPt->Fill(mu->PT);
-     std::cout<<"3 muons"<<std::endl;
-	 
-   }
-   std::cout<<"finished muons"<<std::endl;
-   
-   std::cout<<"looping MET"<<std::endl;
-   
-   // Missing Energy
-   for(jme = 0; jme < branchMissingET->GetEntriesFast(); ++jme){
-      MET = (MissingET*) branchMissingET->At(jme);
-      if(MET->MET > 25) continue;
-   }
-   std::cout<<"finished MET"<<std::endl;
-   
-   std::cout<<"looping jets"<<std::endl;
+    
+    // Missing Energy
+    if(branchMissingET->GetEntriesFast()>0){
+      MET = (MissingET*) branchMissingET->At(0);
+    }
     
     // Loop over all jets in event
     for(i = 0; i < branchJet->GetEntriesFast(); ++i)
-    {
-      Double_t PartonJetdR = -1;
-      
-      pdgCodeMax = -1;
-      
-      jet = (Jet*) branchJet->At(i);
-      
-      //Apply cuts
-      if(jet->PT < pTMin || TMath::Abs(jet->Eta) > etaMax || TMath::Abs(jet->Eta) < etaMin ) continue;
-      
-      //Define a jet 3-vector
-      vJet.SetPtEtaPhi(jet->PT, jet->Eta, jet->Phi);
-      
-      plots->hJetEta->Fill(jet->Eta);
-      
-      
-      // Loop over GenParticles
-      for(j = 0; j < branchParticle->GetEntriesFast(); ++j)
       {
-      	particle = (GenParticle*)branchParticle->At(j);
+	Double_t PartonJetdR = -1;
 	
-      	if(particle->PT < PartonPTMin || TMath::Abs(particle->Eta) > PartonEtaMax) continue;
+	pdgCodeMax = -1;
 	
-      	vParticle.SetPtEtaPhi(particle->PT, particle->Eta, particle->Phi);
+	jet = (Jet*) branchJet->At(i);
 	
-      	plots->hParticleEta->Fill(particle->Eta);
+	//Apply cuts
+	if(jet->PT < pTMin || TMath::Abs(jet->Eta) > etaMax || TMath::Abs(jet->Eta) < etaMin ) continue;
 	
-      	// Get jet flavor
-      	pdgCode = TMath::Abs(particle->PID);
-      	if(pdgCode == 5) plots->hBQuarkEta->Fill(particle->Eta);
+	//Define a jet 3-vector
+	vJet.SetPtEtaPhi(jet->PT, jet->Eta, jet->Phi);
 	
-      	if(pdgCode != 21 && pdgCode > 5) continue;
-      	if(pdgCode == 21) pdgCode = 0;	  
+	plots->hJetEta->Fill(jet->Eta);
 	
-      	Double_t dR = DeltaR(vParticle, vJet);
-      	if(dR < PartondRmin)
-      	{
-      	  if(pdgCodeMax < pdgCode){
-      	    PartonJetdR = dR;
-      	    pdgCodeMax = pdgCode;
-      	  }
-      	}
-      } // end gen particle loop 
-      
-      if(pdgCodeMax == 0) pdgCodeMax = 21;
-      if(pdgCodeMax == -1) pdgCodeMax = 0;
-      
-      if( (pdgCodeMax != 21 && pdgCodeMax > 5) || pdgCodeMax == 0 ) continue;
-      
-      // If b jet
-      std::cout<<"if b"<<std::endl;
-      if(pdgCodeMax == 5)
-      {	  
-      	plots->hJetBDeltaR->Fill(PartonJetdR);
-      	plots->hBJetEta->Fill(jet->Eta);
-      	plots->hBJetPt->Fill(jet->PT);
-      }
-      
-      trackpTMax = -1;
-      Int_t NrTracks = 0;
-      
-      std::vector<double> IP;
-      
-      // Loop over tracks
-      std::cout<<"loop tracks"<<std::endl;
-      for(k = 0; k < branchEFlowTrack->GetEntriesFast(); ++k)
-      {
-      	track = (Track*)branchEFlowTrack->At(k);
-      	if(track->PT < 1.0) continue;
 	
-      	vTrack.SetPtEtaPhi(track->PT, track->Eta, track->Phi);
-      	Double_t dR = DeltaR(vTrack, vJet);
+	// Loop over GenParticles
+	for(j = 0; j < branchParticle->GetEntriesFast(); ++j)
+	  {
+	    particle = (GenParticle*)branchParticle->At(j);
 	
-      	// Get highest pT track in jet cone
-      	if(dR > dRmin)continue;
-	
-      	Double_t dxyAllTracks = ComputeIP(track);
-      	IP.push_back(dxyAllTracks);
-	
-      	NrTracks +=1;
-      	trackpT = track->PT;
-      	plots->hJetTrackDeltaR->Fill(dR);
-	
-      	if(pdgCodeMax == 5){
-      		plots->h_bJetTrackPt->Fill(trackpT);
-    		}
-		
-    	  if(trackpTMax < trackpT){
-    	    trackpTMax = trackpT;
-    	    LeadingTrack = track;
-    	  }
-      } // end track loop
-      std::cout<<"sort IP"<<std::endl;
-      std::sort(IP.begin(),IP.end());
-      std::reverse(IP.begin(),IP.end());
-      
-      std::cout<<"dxy"<<std::endl;
-      // calculate Impact parameter
-      dxy = -10;
-      if (LeadingTrack)
-        dxy = ComputeIP(LeadingTrack);
-      
-      // If b jet
-      std::cout<<"if b2"<<std::endl;
-      if(pdgCodeMax == 5)
-      {	  
-        std::cout<<"if b2.1"<<std::endl;
-      	// Store leading pT bjet as bjet1 and next leading as bjet2
-	      if (!bjet1 /*&& jet->PT > 30*/){
-          std::cout<<"if b2.2"<<std::endl;
-      		bjet1=jet;
-	      } else if (jet->PT > bjet1->PT){
-          std::cout<<"if b2.3"<<std::endl;
-      		bjet2=bjet1;
-      		bjet1=jet;
-	      } else if (!bjet2 && jet->PT > 30){
-          std::cout<<"if b2.4"<<std::endl;
-          bjet2=jet;
-	      } else if (jet->PT > bjet2->PT){
-          std::cout<<"if b2.5"<<std::endl;
-          bjet2=jet;
+	    if(particle->PT < PartonPTMin || TMath::Abs(particle->Eta) > PartonEtaMax) continue;
+	    
+	    vParticle.SetPtEtaPhi(particle->PT, particle->Eta, particle->Phi);
+	    
+	    plots->hParticleEta->Fill(particle->Eta);
+	    
+	    // Get jet flavor
+	    pdgCode = TMath::Abs(particle->PID);
+	    if(pdgCode == 5) plots->hBQuarkEta->Fill(particle->Eta);
+	    
+	    if(pdgCode != 21 && pdgCode > 5) continue;
+	    if(pdgCode == 21) pdgCode = 0;	  
+	    
+	    Double_t dR = DeltaR(vParticle, vJet);
+	    if(dR < PartondRmin)
+	      {
+		if(pdgCodeMax < pdgCode){
+		  PartonJetdR = dR;
+		  pdgCodeMax = pdgCode;
+		}
 	      }
-
-       //         plots->hBJetIP->Fill(dxy);
-       //         plots->h_bJetLeadingTrackPt->Fill(LeadingTrack->PT);
-       //         plots->h_bJetTrackMultiplicity->Fill(NrTracks);
-       //
-       // if(IP.size()>0)plots->hBJetIP_first->Fill(IP[0]);
-       //        if(IP.size()>1)plots->hBJetIP_second->Fill(IP[1]);
-       //        if(IP.size()>2)plots->hBJetIP_third->Fill(IP[2]);
-      
-       IP.clear();
-      
-      } // end if b jet
-      // If c jet
-      else if(pdgCodeMax == 4)
-      {	  
-        std::cout<<"if c2"<<std::endl;
-        plots->hCJetIP->Fill(dxy);
+	  } // end gen particle loop 
 	
-        if(IP.size()>0)plots->hCJetIP_first->Fill(IP[0]);  
-        if(IP.size()>1)plots->hCJetIP_second->Fill(IP[1]);  
-        if(IP.size()>2)plots->hCJetIP_third->Fill(IP[2]);  
-      
-        IP.clear();
-      
-      } // end if c jet
-      // If light jet
-      else if( (pdgCodeMax > 0) && (pdgCodeMax <=3 || pdgCodeMax ==21) )
-      {	  
-        std::cout<<"if light2"<<std::endl;
-        plots->hLightJetIP->Fill(dxy);
+	if(pdgCodeMax == 0) pdgCodeMax = 21;
+	if(pdgCodeMax == -1) pdgCodeMax = 0;
 	
-        if(IP.size()>0)plots->hLightJetIP_first->Fill(IP[0]);  
-        if(IP.size()>1)plots->hLightJetIP_second->Fill(IP[1]);  
-        if(IP.size()>2)plots->hLightJetIP_third->Fill(IP[2]);  
+	if( (pdgCodeMax != 21 && pdgCodeMax > 5) || pdgCodeMax == 0 ) continue;
+	
+	// If b jet
+	if(pdgCodeMax == 5)
+	  {	  
+	    plots->hJetBDeltaR->Fill(PartonJetdR);
+	    plots->hBJetEta->Fill(jet->Eta);
+	    plots->hBJetPt->Fill(jet->PT);
+	  }
+	
+	trackpTMax = -1;
+	Int_t NrTracks = 0;
+	
+	std::vector<double> IP;
       
-        IP.clear();
-	      if(jet->PT >20){
-          // Store leading pt light jet to ljet1 and subleading to ljet2
-          if (!ljet1){
-            ljet1 = jet;
-          } else if (jet->PT > ljet1->PT){
-            ljet2=ljet1;
-            ljet1=jet;
-          } else if (!ljet2){
-            ljet2=jet;
-          } else if (jet->PT > ljet2->PT){
-            ljet2=jet;
-          }
-	      }
+	// Loop over tracks
+	for(k = 0; k < branchEFlowTrack->GetEntriesFast(); ++k)
+	  {
+	    track = (Track*)branchEFlowTrack->At(k);
+	    if(track->PT < 1.0) continue;
+	    
+	    vTrack.SetPtEtaPhi(track->PT, track->Eta, track->Phi);
+	    Double_t dR = DeltaR(vTrack, vJet);
+	    
+	    // Get highest pT track in jet cone
+	    if(dR > dRmin)continue;
+	    
+	    Double_t dxyAllTracks = ComputeIP(track);
+	    IP.push_back(dxyAllTracks);
+	    
+	    NrTracks +=1;
+	    trackpT = track->PT;
+	    plots->hJetTrackDeltaR->Fill(dR);
+	
+	    if(pdgCodeMax == 5){
+	      plots->h_bJetTrackPt->Fill(trackpT);
+	    }
+	    
+	    if(trackpTMax < trackpT){
+	      trackpTMax = trackpT;
+	      LeadingTrack = track;
+	    }
+	  } // end track loop
       
-      } // end if light jet
+	std::sort(IP.begin(),IP.end());
+	std::reverse(IP.begin(),IP.end());
+	
+	// calculate Impact parameter
+	dxy = -10;
+	if (LeadingTrack)
+	  dxy = ComputeIP(LeadingTrack);
+	
+	// If b jet
+	if(pdgCodeMax == 5)
+	  {	  
+	    // Store leading pT bjet as bjet1 and next leading as bjet2
+	    if (!bjet1){
+	      bjet1=jet;
+	    } else if (jet->PT > bjet1->PT){
+	      bjet2=bjet1;
+	      bjet1=jet;
+	    } else if (!bjet2){
+	      bjet2=jet;
+	    } else if (jet->PT > bjet2->PT){
+	      bjet2=jet;
+	    }
+	    else{
+	    }
+	  
+	    //         plots->hBJetIP->Fill(dxy);
+	    //         plots->h_bJetLeadingTrackPt->Fill(LeadingTrack->PT);
+	    //         plots->h_bJetTrackMultiplicity->Fill(NrTracks);
+	    //
+	    // if(IP.size()>0)plots->hBJetIP_first->Fill(IP[0]);
+	    //        if(IP.size()>1)plots->hBJetIP_second->Fill(IP[1]);
+	    //        if(IP.size()>2)plots->hBJetIP_third->Fill(IP[2]);
+	    
+	    IP.clear();
+	  
+	  } // end if b jet
+	// If c jet
+	else if(pdgCodeMax == 4)
+	  {	  
+	    plots->hCJetIP->Fill(dxy);
+	    
+	    if(IP.size()>0)plots->hCJetIP_first->Fill(IP[0]);  
+	    if(IP.size()>1)plots->hCJetIP_second->Fill(IP[1]);  
+	    if(IP.size()>2)plots->hCJetIP_third->Fill(IP[2]);  
+	    
+	    IP.clear();
+	    
+	  } // end if c jet
+	// If light jet
+	else if( (pdgCodeMax > 0) && (pdgCodeMax <=3 || pdgCodeMax ==21) )
+	  {	  
+	    plots->hLightJetIP->Fill(dxy);
+	    
+	    if(IP.size()>0)plots->hLightJetIP_first->Fill(IP[0]);  
+	    if(IP.size()>1)plots->hLightJetIP_second->Fill(IP[1]);  
+	    if(IP.size()>2)plots->hLightJetIP_third->Fill(IP[2]);  
+	    
+	    IP.clear();
+	  }
+	if( (pdgCodeMax > 0) && (pdgCodeMax <=4 || pdgCodeMax ==21) )
+	  if(jet->PT >20){
+	    // Store leading pt light jet to ljet1 and subleading to ljet2
+	    if (!ljet1){
+	      ljet1 = jet;
+	      } else if (jet->PT > ljet1->PT){
+	      ljet2=ljet1;
+	      ljet1=jet;
+	    } else if (!ljet2){
+	      ljet2=jet;
+	    } else if (jet->PT > ljet2->PT){
+	      ljet2=jet;
+	    }
+	  }
       
-    }	// end jet loop
+       // end if light jet
+      
+      }	// end jet loop
     
-    std::cout<<"finished jets"<<std::endl;
-
-
     //  HHH->bbZZ ->bblljj
     if(bjet1 && bjet2){  
-      vBJet1.SetPtEtaPhiM(bjet1->PT, bjet1->Eta, bjet1->Phi, bjet1->Mass);
-      vBJet2.SetPtEtaPhiM(bjet2->PT, bjet2->Eta, bjet2->Phi, bjet2->Mass);
-      // bbWW restricts dR_{bb} < 3.1  60 < M_bb < 160  
-      if( ((vBJet1+vBJet2).M() <90) || ((vBJet1+vBJet2).M() >150) ) continue;
-
-      if(ljet1 &&ljet2){
-        vLJet1.SetPtEtaPhiM(ljet1->PT, ljet1->Eta, ljet1->Phi, ljet1->Mass);
-        vLJet2.SetPtEtaPhiM(ljet2->PT, ljet2->Eta, ljet2->Phi, ljet2->Mass);
-  
-        if( ((vLJet1+vLJet2).M() <60) || ((vLJet1+vLJet2).M() >120) ) continue;
-  
-        if(ele1 && ele2){
-          vElectron1.SetPtEtaPhiM(ele1->PT, ele1->Eta, ele1->Phi, 0.000511);
-          vElectron2.SetPtEtaPhiM(ele2->PT, ele2->Eta, ele2->Phi, 0.000511);
-  
-          if( ((vElectron1+vElectron2).M() <80) || ((vElectron1+vElectron2).M() > 100) ) continue;
-        }
-        else if(mu1 && mu2){
-          vMuon1.SetPtEtaPhiM(mu1->PT, mu1->Eta, mu1->Phi, 0.105);
-          vMuon2.SetPtEtaPhiM(mu2->PT, mu2->Eta, mu2->Phi, 0.105);
     
-          if( ((vMuon1+vMuon2).M() <80) || ((vMuon1+vMuon2).M() > 100) ) continue;
-        }
+      // Require little Missing ET
+      if(MET->MET < 25){
+	
+	vBJet1.SetPtEtaPhiM(bjet1->PT, bjet1->Eta, bjet1->Phi, bjet1->Mass);
+	vBJet2.SetPtEtaPhiM(bjet2->PT, bjet2->Eta, bjet2->Phi, bjet2->Mass);
+
+	// bbWW restricts dR_{bb} < 3.1  60 < M_bb < 160  
+	if( ((vBJet1+vBJet2).M() < 90) || ((vBJet1+vBJet2).M() > 150) ) continue;
+	dRbb = LorenzDeltaR(vBJet1, vBJet2);
+	//if (dRbb > 3.1) continue;
+	vbb = vBJet1 + vBJet2;
+
+	nbb++;
+
+	// Light DiJet mass
+	if(ljet1 && ljet2){
+	  vLJet1.SetPtEtaPhiM(ljet1->PT, ljet1->Eta, ljet1->Phi, ljet1->Mass);
+	  vLJet2.SetPtEtaPhiM(ljet2->PT, ljet2->Eta, ljet2->Phi, ljet2->Mass);
+	  
+	  if( ((vLJet1+vLJet2).M() < 60) || ((vLJet1+vLJet2).M() > 120) ) continue;
+	  vdiJetZ = vLJet1 + vLJet2;
+	  
+	  nbbjj++;
+
+	  dilep = false;
+	  // DiLepton mass
+	  if(ele1 && ele2){
+	    vElectron1.SetPtEtaPhiM(ele1->PT, ele1->Eta, ele1->Phi, 0.000511);
+	    vElectron2.SetPtEtaPhiM(ele2->PT, ele2->Eta, ele2->Phi, 0.000511);
+
+	    // Require M_ll within {80,100 GeV}
+	    if( ((vElectron1+vElectron2).M() < 80) || ((vElectron1+vElectron2).M() > 100) ) continue;
+	    vdiLeptonZ = vElectron1 + vElectron2;
+	    dilep = true;
+	  }
+	  
+	  if(mu1 && mu2){
+	    vMuon1.SetPtEtaPhiM(mu1->PT, mu1->Eta, mu1->Phi, 0.105);
+	    vMuon2.SetPtEtaPhiM(mu2->PT, mu2->Eta, mu2->Phi, 0.105);
+	    // Require M_ll within {80,100 GeV}
+	    if( ((vMuon1+vMuon2).M() < 80) || ((vMuon1+vMuon2).M() > 100) ) continue;
+	    vdiLeptonZ = vMuon1 + vMuon2;
+	    dilep = true;
+	  } 
+	  // Combine masses
+	  if (!dilep) continue;
+	  vZZ = vdiLeptonZ + vdiJetZ;
+	  std::cout<<std::endl;
+	  std::cout<<"diLeptonZ mass: "<<vdiLeptonZ.M()<<std::endl;
+	  std::cout<<"diJetZ    mass: "<<vdiJetZ.M()<<std::endl;
+	  std::cout<<std::endl;
+	  std::cout<<"diZ mass : "<<vZZ.M()<<std::endl;
+	  std::cout<<"bb  mass : "<<vbb.M()<<std::endl; 
+	  vbbZZ = vZZ + vbb;
+	  nbbjjll++;
+	  std::cout<<"bbZZ mass : "<<vbbZZ.M()<<std::endl;
+	
+	}
       }
     } 
-    std::cout<<"finished ele and mu"<<std::endl;
-
+       
   } // end event loop
-  
+
   std::cout<<"finished event loop"<<std::endl;
-  
+  std::cout<<"Number of events (Nbb : Nbbjj : Nbbjjll) : " << nbb << "   "<< nbbjj <<"   "<< nbbjjll <<std::endl;
   plots->hBJetIP->Scale(1./plots->hBJetIP->Integral());
   plots->hCJetIP->Scale(1./plots->hCJetIP->Integral());
   plots->hLightJetIP->Scale(1./plots->hLightJetIP->Integral());
@@ -756,7 +782,6 @@ void AnalyseEvents(ExRootTreeReader *treeReader, MyPlots *plots)
   plots->hCJetIP_first->Scale(1./plots->hCJetIP_first->Integral());
   plots->hBJetIP_first->Scale(1./plots->hBJetIP_first->Integral());
   
-	std::cout <<plots->hLightJetIP->ClassName()<<std::endl;
   Double_t median = GetMedian(plots->h_bJetTrackPt);
   
   std::cout<<"Median b-jetTrackPt"<<median<<std::endl;
@@ -781,7 +806,19 @@ void EventSelections (const char *inputFile, const char *outputFile)
   gSystem->Load("libDelphes");
   
   TChain *chain = new TChain("Delphes");
-  chain->Add(inputFile);
+  if (string(inputFile).rfind(".root") < string(inputFile).length()){ 
+    chain->Add(inputFile);
+  }
+  
+  else if(string(inputFile).rfind(".txt") < string(inputFile).length()){
+    std::ifstream *st = new ifstream(TString(inputFile).Data(),std::ifstream::in);
+    char line[800];
+    while(st->good()){
+      st->getline(line,800);
+      TString l = line;
+      chain->AddFile(l);
+    }
+  }
   
   ExRootTreeReader *treeReader = new ExRootTreeReader(chain);
   ExRootResult *result = new ExRootResult();

@@ -13,28 +13,42 @@ class LeptonControlPlots(BaseControlPlots):
 
     def beginJob(self):
       # declare histograms
-      self.add("ElectronPt","Electron Pt",100,0,200)
-      self.add("MuonPt","Muon Pt",100,0,200)
-      self.add("ElectronEta","Electron Eta",50,-2.5,2.5)
-      self.add("MuonEta","Muon Eta",50,-2.5,2.5)
       self.add("NMuons","Muon multiplicity",10,0,10)
+      self.add("Muon1Pt","Muon Pt",100,0,200)
+      self.add("Muon1Eta","Muon Eta",50,-2.5,2.5)
+      self.add("Muon2Pt","Muon Pt",100,0,200)
+      self.add("Muon2Eta","Muon Eta",50,-2.5,2.5)
       self.add("NElectrons","Electron multiplicity",10,0,10)
+      self.add("Electron1Pt","Electron Pt",100,0,200)
+      self.add("Electron1Eta","Electron Eta",50,-2.5,2.5)
+      self.add("Electron2Pt","Electron Pt",100,0,200)
+      self.add("Electron2Eta","Electron Eta",50,-2.5,2.5)
 
     def process(self, event):
       #get information
       result = { }
-      result["ElectronPt"] = [ ]
-      result["MuonPt"] = [ ]
-      result["ElectronEta"] = [ ]
-      result["MuonEta"] = [ ]
-      for mu in event.muons:
-        result["MuonPt"].append(mu.PT)
-        result["MuonEta"].append(mu.Eta)
-      for ele in event.electrons:
-        result["ElectronPt"].append(ele.PT)
-        result["ElectronEta"].append(ele.Eta)
       result["NMuons"] = event.muons.GetEntries()
+      result["Muon1Pt"] = [ ]
+      result["Muon1Eta"] = [ ]
+      result["Muon2Pt"] = [ ]
+      result["Muon2Eta"] = [ ]
+      if event.muons.GetEntries()>0:
+        result["Muon1Pt"].append(event.muons[0].PT)
+        result["Muon1Eta"].append(event.muons[0].Eta)
+      if event.muons.GetEntries()>1:
+        result["Muon2Pt"].append(event.muons[1].PT)
+        result["Muon2Eta"].append(event.muons[1].Eta)
       result["NElectrons"] = event.electrons.GetEntries()
+      result["Electron1Pt"] = [ ]
+      result["Electron1Eta"] = [ ]
+      result["Electron2Pt"] = [ ]
+      result["Electron2Eta"] = [ ]
+      if event.electrons.GetEntries()>0:
+        result["Electron1Pt"].append(event.electrons[0].PT)
+        result["Electron1Eta"].append(event.electrons[0].Eta)
+      if event.electrons.GetEntries()>1:
+        result["Electron2Pt"].append(event.electrons[1].PT)
+        result["Electron2Eta"].append(event.electrons[1].Eta)
       return result
 
 if __name__=="__main__":

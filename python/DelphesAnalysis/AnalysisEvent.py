@@ -40,7 +40,7 @@ class AnalysisEvent(TChain):
          print "Warning: ",thefile," do not exist."
      else:
        print "Warning: invalid inputFiles"
-     self.BuildIndex("Event[0].Number")
+     #self.BuildIndex("Event[0].Number")
      self.SetBranchStatus("*",0)
      self._eventCounts        = 0
      self._maxEvents          = maxEvents
@@ -51,6 +51,7 @@ class AnalysisEvent(TChain):
      # 2. a list of event products used in the analysis
      self._collections = {} 
      self._branches = dict((b,False) for b in map(lambda b:b.GetName(),self.GetListOfBranches()))
+     print self._branches
      # 3. a list of "producers" of analysis high-level quantities
      self._producers = {}
      # 4. volatile dictionary. User can add any quantity to the event and it will be 
@@ -153,10 +154,10 @@ class AnalysisEvent(TChain):
 
    def event(self):
      """Event number"""
-     if self._branches["Event"]:
-       return self.Event.At(0).Number
-     else:
-       return 0
+     #if self._branches["Event"]:
+     #  return self.Event.At(0).Number
+     #else:
+     return 0
 
    def to(self,event):
      """Jump to some event"""
